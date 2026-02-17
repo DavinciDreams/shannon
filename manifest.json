@@ -1,32 +1,55 @@
 {
   "manifest_version": 3,
-  "name": "Duly Noted",
-  "description": "Capture voice notes with real-time transcription. Send to GitHub Issues, Projects, Notion, or save as drafts. Never lose a great idea again.",
+  "name": "Shannon - Front-End Testing Agent",
+  "description": "Intelligent UI testing agent with AI-powered visual analysis, console monitoring, element inspection, and seamless GitHub issue reporting.",
   "version": "1.0.0",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
+  "minimum_chrome_version": "114",
   "permissions": [
     "storage",
     "sidePanel",
     "windows",
-    "identity"
+    "identity",
+    "offscreen",
+    "tabs",
+    "scripting",
+    "activeTab"
   ],
   "host_permissions": [
+    "<all_urls>",
     "https://api.github.com/*",
     "https://github.com/login/oauth/*",
-    "https://api.notion.com/*"
+    "https://api.notion.com/*",
+    "https://api.z.ai/*",
+    "https://openrouter.ai/*",
+    "https://api.anthropic.com/*"
   ],
   "background": {
-    "service_worker": "src/service-worker/service-worker.js"
+    "service_worker": "src/service-worker/service-worker.js",
+    "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/content-scripts/namespace.js",
+        "src/content-scripts/element-inspector.js",
+        "src/content-scripts/element-selector.js",
+        "src/content-scripts/console-interceptor.js",
+        "src/content-scripts/main.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
   "side_panel": {
     "default_path": "src/sidepanel/sidepanel.html"
   },
   "action": {
-    "default_title": "Duly Noted - Quick voice notes",
+    "default_title": "Shannon - Front-End Testing Agent",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
@@ -38,7 +61,7 @@
       "suggested_key": {
         "default": "Alt+Shift+V"
       },
-      "description": "Open Duly Noted side panel"
+      "description": "Open Shannon side panel"
     }
   }
 }

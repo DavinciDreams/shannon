@@ -1,6 +1,6 @@
 /**
- * Voice Starter Side Panel
- * Main UI controller
+ * Front-End Testing Agent Side Panel
+ * Main UI controller with testing features
  */
 
 import { getDrafts, getHistory, getSettings, updateSettings, resetSettings } from '../lib/storage.js';
@@ -11,11 +11,16 @@ import { GitHubService } from '../lib/github-service.js';
 import { GitHubCache } from '../lib/github-cache.js';
 import { NotionOAuth } from '../lib/notion-oauth.js';
 import { NotionService } from '../lib/notion-service.js';
+import { VisionService } from '../lib/vision-service.js';
+import { VISION_PROVIDERS, getProviderModels } from '../config/vision-config.js';
+import { IssueBuilder } from '../lib/issue-builder.js';
 
 console.log('[Side Panel] Loading...');
 
-// Initialize transcription service
+// Initialize services
 let transcriptionService = null;
+let visionService = null;
+let issueBuilder = null;
 
 // ============================================================================
 // Screen Management
@@ -28,27 +33,53 @@ const screens = {
   GITHUB_PROJECT: 'githubProjectScreen',
   HISTORY: 'historyScreen',
   SETTINGS: 'settingsScreen',
+  TESTING_DASHBOARD: 'testingDashboardScreen',
+  ELEMENT_INSPECTOR: 'elementInspectorScreen',
+  CONSOLE_LOGS: 'consoleLogsScreen',
+  AI_ANALYSIS: 'aiAnalysisScreen',
+  TESTING_GITHUB_ISSUE: 'testingGitHubIssueScreen',
 };
 
-let currentScreen = screens.RECORDING;
+let currentScreen = screens.TESTING_DASHBOARD;
+let previousScreen = screens.TESTING_DASHBOARD;
 
 function showScreen(screenId) {
-  // Hide all screens
-  Object.values(screens).forEach(id => {
-    const screen = document.getElementById(id);
-    if (screen) {
-      screen.classList.remove('active');
+  try {
+    // Validate screenId
+    if (!screenId) {
+      console.error('[Side Panel] showScreen called with invalid screenId:', screenId);
+      return;
     }
-  });
 
-  // Show requested screen
-  const screen = document.getElementById(screenId);
-  if (screen) {
-    screen.classList.add('active');
-    currentScreen = screenId;
-    console.log('[Side Panel] Showing screen:', screenId);
+    // Hide all screens
+    Object.values(screens).forEach(id => {
+      const screen = document.getElementById(id);
+      if (screen) {
+        screen.classList.remove('active');
+      }
+    });
+
+    // Show requested screen
+    const screen = document.getElementById(screenId);
+    if (screen) {
+      screen.classList.add('active');
+      currentScreen = screenId;
+      console.log('[Side Panel] Showing screen:', screenId);
+    } else {
+      console.error('[Side Panel] Screen not found:', screenId);
+      showToast('Error: Screen not found', 'error');
+    }
+  } catch (error) {
+    console.error('[Side Panel] Error showing screen:', error);
+    showToast('Error displaying screen', 'error');
   }
 }
+
+// ============================================================================
+// Mode State
+// ============================================================================
+
+let currentMode = 'recording'; // 'recording' or 'testing'
 
 // ============================================================================
 // Recording State
@@ -67,6 +98,8 @@ let currentTranscription = '';
 const recordBtn = document.getElementById('recordBtn');
 const recordBtnText = document.getElementById('recordBtnText');
 const settingsBtn = document.getElementById('settingsBtn');
+const modeSwitcherBtn = document.getElementById('modeSwitcherBtn');
+const modeSwitcherText = document.getElementById('modeSwitcherText');
 const viewAllHistoryBtn = document.getElementById('viewAllHistoryBtn');
 const backToRecordingBtn = document.getElementById('backToRecordingBtn');
 const backFromHistoryBtn = document.getElementById('backFromHistoryBtn');
@@ -108,6 +141,17 @@ const notionSignOutBtn = document.getElementById('notionSignOutBtn');
 const notionWorkspaceName = document.getElementById('notionWorkspaceName');
 const notionWorkspaceIcon = document.getElementById('notionWorkspaceIcon');
 
+// Vision Provider elements
+const visionProviderSelect = document.getElementById('visionProviderSelect');
+const visionModelSection = document.getElementById('visionModelSection');
+const visionModelSettingsSelect = document.getElementById('visionModelSelect');
+const visionApiKeySection = document.getElementById('visionApiKeySection');
+const visionApiKey = document.getElementById('visionApiKey');
+const testVisionApiKeyBtn = document.getElementById('testVisionApiKeyBtn');
+const visionProviderHelp = document.getElementById('visionProviderHelp');
+const visionProviderHelpText = document.getElementById('visionProviderHelpText');
+const visionProviderDocsLink = document.getElementById('visionProviderDocsLink');
+
 // GitHub Issue form elements
 const backFromGitHubIssueBtn = document.getElementById('backFromGitHubIssueBtn');
 const githubRepoSearch = document.getElementById('githubRepoSearch');
@@ -144,11 +188,72 @@ const modalLink = document.getElementById('modalLink');
 const modalLinkSection = document.getElementById('modalLinkSection');
 
 // ============================================================================
+// Testing Dashboard Elements
+// ============================================================================
+
+// Dashboard elements
+const refreshDashboardBtn = document.getElementById('refreshDashboardBtn');
+const tabIconImg = document.getElementById('tabIconImg');
+const tabTitle = document.getElementById('tabTitle');
+const tabUrl = document.getElementById('tabUrl');
+const selectElementBtn = document.getElementById('selectElementBtn');
+const captureScreenshotBtn = document.getElementById('captureScreenshotBtn');
+const viewConsoleLogsBtn = document.getElementById('viewConsoleLogsBtn');
+const voiceNoteBtn = document.getElementById('voiceNoteBtn');
+const errorCountValue = document.getElementById('errorCountValue');
+const recentErrors = document.getElementById('recentErrors');
+const recentTests = document.getElementById('recentTests');
+
+// Element Inspector elements
+const backToDashboardBtn = document.getElementById('backToDashboardBtn');
+const elementScreenshot = document.getElementById('elementScreenshot');
+const elementTag = document.getElementById('elementTag');
+const elementId = document.getElementById('elementId');
+const elementClass = document.getElementById('elementClass');
+const elementSize = document.getElementById('elementSize');
+const elementHtmlCode = document.getElementById('elementHtmlCode');
+const elementStylesList = document.getElementById('elementStylesList');
+const analyzeWithAIBtn = document.getElementById('analyzeWithAIBtn');
+const generateTestCasesBtn = document.getElementById('generateTestCasesBtn');
+const createIssueFromInspectorBtn = document.getElementById('createIssueFromInspectorBtn');
+
+// Console Logs elements
+const backToDashboardFromLogsBtn = document.getElementById('backToDashboardFromLogsBtn');
+const filterLogsBtn = document.getElementById('filterLogsBtn');
+const clearLogsBtn = document.getElementById('clearLogsBtn');
+const logList = document.getElementById('logList');
+
+// AI Analysis elements
+const backToInspectorBtn = document.getElementById('backToInspectorBtn');
+const visionProvider = document.getElementById('visionProvider');
+const visionModelSelect = document.getElementById('visionModel');
+const analysisType = document.getElementById('analysisType');
+const customPrompt = document.getElementById('customPrompt');
+const runAnalysisBtn = document.getElementById('runAnalysisBtn');
+const analysisResults = document.getElementById('analysisResults');
+
+// Testing GitHub Issue elements
+const backToInspectorFromIssueBtn = document.getElementById('backToInspectorFromIssueBtn');
+const testingIssueRepo = document.getElementById('testingIssueRepo');
+const testingIssueTitle = document.getElementById('testingIssueTitle');
+const testingIssueBody = document.getElementById('testingIssueBody');
+const testingIssueLabels = document.getElementById('testingIssueLabels');
+const attachScreenshot = document.getElementById('attachScreenshot');
+const attachElementInfo = document.getElementById('attachElementInfo');
+const attachConsoleLogs = document.getElementById('attachConsoleLogs');
+const attachAIAnalysis = document.getElementById('attachAIAnalysis');
+const testingIssuePreviewContent = document.getElementById('testingIssuePreviewContent');
+const submitTestingIssueBtn = document.getElementById('submitTestingIssueBtn');
+
+// ============================================================================
 // Event Listeners
 // ============================================================================
 
 // Navigation
+modeSwitcherBtn.addEventListener('click', handleModeSwitch);
+
 settingsBtn.addEventListener('click', () => {
+  previousScreen = currentScreen;
   showScreen(screens.SETTINGS);
   loadSettings();
 });
@@ -160,7 +265,7 @@ viewAllHistoryBtn.addEventListener('click', () => {
 
 backToRecordingBtn.addEventListener('click', () => showScreen(screens.RECORDING));
 backFromHistoryBtn.addEventListener('click', () => showScreen(screens.RECORDING));
-backFromSettingsBtn.addEventListener('click', () => showScreen(screens.RECORDING));
+backFromSettingsBtn.addEventListener('click', () => showScreen(previousScreen));
 
 // Recording
 recordBtn.addEventListener('click', handleRecordButtonClick);
@@ -199,6 +304,10 @@ developerModeToggle.addEventListener('change', handleDeveloperModeToggle);
 notionSignInBtn.addEventListener('click', handleNotionSignIn);
 notionSignOutBtn.addEventListener('click', handleNotionSignOut);
 
+// Vision Provider
+visionProviderSelect.addEventListener('change', handleVisionProviderChange);
+testVisionApiKeyBtn.addEventListener('click', handleTestVisionApiKey);
+
 // GitHub Issue form
 backFromGitHubIssueBtn.addEventListener('click', () => showScreen(screens.DESTINATION));
 cancelIssueBtn.addEventListener('click', () => showScreen(screens.DESTINATION));
@@ -232,6 +341,114 @@ historyDetailModal.addEventListener('click', (e) => {
     hideHistoryDetailModal();
   }
 });
+
+// ============================================================================
+// Testing Dashboard Event Listeners
+// ============================================================================
+
+// Dashboard
+refreshDashboardBtn.addEventListener('click', loadTestingDashboard);
+selectElementBtn.addEventListener('click', handleSelectElement);
+captureScreenshotBtn.addEventListener('click', handleCaptureScreenshot);
+viewConsoleLogsBtn.addEventListener('click', () => {
+  showScreen(screens.CONSOLE_LOGS);
+  loadConsoleLogs();
+});
+voiceNoteBtn.addEventListener('click', handleRecordButtonClick);
+
+// Element Inspector
+backToDashboardBtn.addEventListener('click', () => showScreen(screens.TESTING_DASHBOARD));
+analyzeWithAIBtn.addEventListener('click', () => {
+  showScreen(screens.AI_ANALYSIS);
+  setupAIAnalysis('general');
+});
+generateTestCasesBtn.addEventListener('click', () => {
+  showScreen(screens.AI_ANALYSIS);
+  setupAIAnalysis('test');
+});
+createIssueFromInspectorBtn.addEventListener('click', () => {
+  showScreen(screens.TESTING_GITHUB_ISSUE);
+  setupTestingGitHubIssue();
+});
+
+// Console Logs
+backToDashboardFromLogsBtn.addEventListener('click', () => showScreen(screens.TESTING_DASHBOARD));
+filterLogsBtn.addEventListener('click', toggleLogFilters);
+clearLogsBtn.addEventListener('click', handleClearLogs);
+
+// Log filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    filterLogs(e.target.getAttribute('data-level'));
+  });
+});
+
+// AI Analysis
+backToInspectorBtn.addEventListener('click', () => showScreen(screens.ELEMENT_INSPECTOR));
+runAnalysisBtn.addEventListener('click', handleRunAnalysis);
+visionProvider.addEventListener('change', () => {
+  populateModelDropdown(visionProvider.value, visionModelSelect);
+});
+// Initialize AI Analysis model dropdown with default provider
+populateModelDropdown(visionProvider.value, visionModelSelect);
+
+// Testing GitHub Issue
+backToInspectorFromIssueBtn.addEventListener('click', () => showScreen(screens.ELEMENT_INSPECTOR));
+submitTestingIssueBtn.addEventListener('click', handleSubmitTestingIssue);
+
+// Update preview on input changes
+testingIssueTitle.addEventListener('input', updateIssuePreview);
+testingIssueBody.addEventListener('input', updateIssuePreview);
+testingIssueLabels.addEventListener('input', updateIssuePreview);
+
+// Listen for messages from content scripts and service worker
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[Side Panel] Received message:', message.type);
+
+  switch (message.type) {
+    case 'ELEMENT_SELECTED':
+      handleElementSelected(message.data);
+      break;
+    case 'NEW_CONSOLE_LOG':
+      handleNewConsoleLog(message.log);
+      break;
+    case 'SCREENSHOT_CAPTURED':
+      handleScreenshotCaptured(message.dataUrl, message.elementData);
+      break;
+    case 'CONSOLE_LOGS':
+      handleConsoleLogsReceived(message.logs);
+      break;
+    case 'VISION_ANALYSIS_RESULT':
+      handleVisionAnalysisResult(message.result);
+      break;
+    case 'GITHUB_ISSUE_CREATED':
+      handleGitHubIssueCreated(message.issue);
+      break;
+  }
+});
+
+// ============================================================================
+// Mode Switching Functions
+// ============================================================================
+
+function handleModeSwitch() {
+  console.log('[Side Panel] Switching mode from:', currentMode);
+  
+  if (currentMode === 'recording') {
+    // Switch to testing mode
+    currentMode = 'testing';
+    modeSwitcherText.textContent = '🎤 Voice';
+    showScreen(screens.TESTING_DASHBOARD);
+    loadTestingDashboard();
+  } else {
+    // Switch to recording mode
+    currentMode = 'recording';
+    modeSwitcherText.textContent = '🧪 Testing';
+    showScreen(screens.RECORDING);
+  }
+}
 
 // ============================================================================
 // Recording Functions
@@ -287,12 +504,19 @@ async function actuallyStartRecording() {
     // Get settings for language
     const settings = await getSettings();
 
-    // Initialize transcription service
-    transcriptionService = new TranscriptionService({
-      language: settings.transcriptionLanguage || 'en-US',
-      continuous: true,
-      interimResults: true
-    });
+    // Initialize transcription service with error boundary
+    try {
+      transcriptionService = new TranscriptionService({
+        language: settings.transcriptionLanguage || 'en-US',
+        continuous: true,
+        interimResults: true
+      });
+      console.log('[Side Panel] Transcription service initialized successfully');
+    } catch (error) {
+      console.error('[Side Panel] Error initializing transcription service:', error);
+      showToast('Error initializing transcription service', 'error');
+      throw error;
+    }
 
     // Set up event handlers
     transcriptionService.onInterimTranscript = (text, confidence) => {
@@ -646,6 +870,39 @@ async function loadSettings() {
     githubTokenInput.value = settings.githubToken || '';
     maxDurationInput.value = settings.maxRecordingDuration || 300;
 
+    // Load vision settings
+    const visionSettings = settings.visionSettings || {};
+    if (visionSettings.provider) {
+      visionProviderSelect.value = visionSettings.provider;
+      const apiKeyKey = `${visionSettings.provider}ApiKey`;
+      visionApiKey.value = visionSettings[apiKeyKey] || '';
+
+      // Populate and select model
+      populateModelDropdown(visionSettings.provider, visionModelSettingsSelect);
+      if (visionSettings.model && visionModelSettingsSelect) {
+        visionModelSettingsSelect.value = visionSettings.model;
+      }
+      visionModelSection.style.display = 'block';
+
+      // Show API key section and help text
+      visionApiKeySection.style.display = 'block';
+      visionProviderHelp.style.display = 'block';
+
+      // Update help text and docs link
+      const info = VISION_PROVIDER_INFO[visionSettings.provider];
+      if (info) {
+        visionProviderHelpText.textContent = info.helpText;
+        visionProviderDocsLink.href = info.docsUrl;
+      }
+
+      // Also sync model to AI Analysis screen
+      populateModelDropdown(visionSettings.provider, visionModelSelect);
+      if (visionSettings.model && visionModelSelect) {
+        visionModelSelect.value = visionSettings.model;
+      }
+      visionProvider.value = visionSettings.provider;
+    }
+
     // Update OAuth UIs
     await updateGitHubConnectionUI();
     await updateNotionConnectionUI();
@@ -661,6 +918,17 @@ async function handleSaveSettings() {
       githubToken: githubTokenInput.value.trim() || null,
       maxRecordingDuration: parseInt(maxDurationInput.value) || 300,
     };
+
+    // Save vision settings if provider is selected
+    const selectedProvider = visionProviderSelect.value;
+    if (selectedProvider) {
+      const visionSettings = {
+        provider: selectedProvider,
+        model: visionModelSettingsSelect ? visionModelSettingsSelect.value : null,
+        [`${selectedProvider}ApiKey`]: visionApiKey.value.trim() || '',
+      };
+      updates.visionSettings = visionSettings;
+    }
 
     const success = await updateSettings(updates);
 
@@ -692,6 +960,151 @@ async function handleResetSettings() {
   } catch (error) {
     console.error('[Side Panel] Error resetting settings:', error);
     showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+// ============================================================================
+// Vision Provider Functions
+// ============================================================================
+
+const VISION_PROVIDER_INFO = {
+  zai: {
+    name: 'Zai (Zhipu AI)',
+    apiKeyEnv: 'ZAI_API_KEY',
+    helpText: 'Get your API key from https://open.bigmodel.cn/usercenter/apikeys',
+    docsUrl: 'https://open.bigmodel.cn/'
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    helpText: 'Get your API key from https://openrouter.ai/keys',
+    docsUrl: 'https://openrouter.ai/'
+  },
+  claude: {
+    name: 'Claude Code (Anthropic)',
+    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    helpText: 'Get your API key from https://console.anthropic.com/',
+    docsUrl: 'https://docs.anthropic.com/'
+  }
+};
+
+/**
+ * Populate a model dropdown based on the selected provider
+ * @param {string} providerKey - Provider key ('zai', 'openrouter', 'claude')
+ * @param {HTMLSelectElement} selectElement - The select element to populate
+ */
+function populateModelDropdown(providerKey, selectElement) {
+  if (!selectElement) return;
+  selectElement.innerHTML = '';
+
+  const models = getProviderModels(providerKey);
+  const providerConfig = VISION_PROVIDERS[providerKey];
+
+  if (models.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No models available';
+    selectElement.appendChild(opt);
+    return;
+  }
+
+  models.forEach(model => {
+    const opt = document.createElement('option');
+    opt.value = model.key;
+    opt.textContent = model.name;
+    if (providerConfig && model.key === providerConfig.defaultModel) {
+      opt.selected = true;
+    }
+    selectElement.appendChild(opt);
+  });
+}
+
+function handleVisionProviderChange() {
+  const selectedProvider = visionProviderSelect.value;
+  console.log('[Side Panel] Vision provider changed to:', selectedProvider);
+
+  if (selectedProvider) {
+    // Show model selector and API key input
+    visionModelSection.style.display = 'block';
+    visionApiKeySection.style.display = 'block';
+    visionProviderHelp.style.display = 'block';
+
+    // Populate model dropdown for settings
+    populateModelDropdown(selectedProvider, visionModelSettingsSelect);
+
+    // Update help text and docs link
+    const info = VISION_PROVIDER_INFO[selectedProvider];
+    visionProviderHelpText.textContent = info.helpText;
+    visionProviderDocsLink.href = info.docsUrl;
+
+    // Load existing API key for this provider
+    loadVisionApiKey(selectedProvider);
+  } else {
+    // Hide model selector, API key input and help text
+    visionModelSection.style.display = 'none';
+    visionApiKeySection.style.display = 'none';
+    visionProviderHelp.style.display = 'none';
+    visionApiKey.value = '';
+  }
+}
+
+async function loadVisionApiKey(provider) {
+  try {
+    const settings = await getSettings();
+    const visionSettings = settings.visionSettings || {};
+    const apiKey = visionSettings[`${provider}ApiKey`] || '';
+    visionApiKey.value = apiKey;
+  } catch (error) {
+    console.error('[Side Panel] Error loading vision API key:', error);
+  }
+}
+
+async function handleTestVisionApiKey() {
+  const provider = visionProviderSelect.value;
+  const apiKey = visionApiKey.value.trim();
+
+  if (!provider) {
+    showToast('Please select a provider first', 'error');
+    return;
+  }
+
+  if (!apiKey) {
+    showToast('Please enter an API key', 'error');
+    return;
+  }
+
+  try {
+    testVisionApiKeyBtn.disabled = true;
+    testVisionApiKeyBtn.textContent = 'Testing...';
+
+    // Save API key and provider
+    const settings = await getSettings();
+    const visionSettings = settings.visionSettings || {};
+    visionSettings.provider = provider;
+    visionSettings[`${provider}ApiKey`] = apiKey;
+    await updateSettings({ visionSettings });
+
+    // Test the connection by initializing the vision service with error boundary
+    try {
+      if (!visionService) {
+        visionService = new VisionService();
+      }
+
+      // Update the provider configuration
+      visionService.setProvider(provider, apiKey);
+
+      showToast('API key saved! You can now use AI analysis.', 'success');
+    } catch (visionError) {
+      console.error('[Side Panel] Error initializing vision service:', visionError);
+      showToast('Error initializing vision service', 'error');
+      throw visionError;
+    }
+  } catch (error) {
+    console.error('[Side Panel] Error testing vision API key:', error);
+    showToast(`Error: ${error.message}`, 'error');
+  } finally {
+    testVisionApiKeyBtn.disabled = false;
+    testVisionApiKeyBtn.textContent = 'Test Connection';
   }
 }
 
@@ -1123,25 +1536,55 @@ function showToast(message, type = 'info', duration = 3000) {
 async function init() {
   console.log('[Side Panel] Initializing...');
 
-  // Check if running in Brave and show warning
-  if (TranscriptionService.isBrave()) {
-    showToast('⚠️ Brave may block Web Speech API. To enable: brave://settings/shields → Allow Google login. Or use Chrome/Edge.', 'warning', 10000);
+  try {
+    // Check if running in Brave and show warning
+    if (TranscriptionService.isBrave()) {
+      showToast('⚠️ Brave may block Web Speech API. To enable: brave://settings/shields → Allow Google login. Or use Chrome/Edge.', 'warning', 10000);
+    }
+
+    // Load initial data with error boundary
+    try {
+      await loadRecentNotes();
+    } catch (error) {
+      console.error('[Side Panel] Error loading recent notes:', error);
+      showToast('Error loading recent notes', 'error');
+    }
+
+    // Update OAuth connection UIs with error boundaries
+    try {
+      await updateGitHubConnectionUI();
+    } catch (error) {
+      console.error('[Side Panel] Error updating GitHub connection UI:', error);
+    }
+
+    try {
+      await updateNotionConnectionUI();
+    } catch (error) {
+      console.error('[Side Panel] Error updating Notion connection UI:', error);
+    }
+
+    // Update destination button states based on auth
+    updateDestinationOptions();
+
+    // Show testing dashboard screen and load its data
+    showScreen(screens.TESTING_DASHBOARD);
+    try {
+      await loadTestingDashboard();
+    } catch (dashError) {
+      console.warn('[Side Panel] Dashboard load error (non-fatal):', dashError.message);
+    }
+
+    console.log('[Side Panel] Ready');
+  } catch (error) {
+    console.error('[Side Panel] Fatal initialization error:', error);
+    showToast('Error initializing side panel', 'error');
+    // Try to show testing dashboard screen anyway
+    try {
+      showScreen(screens.TESTING_DASHBOARD);
+    } catch (fallbackError) {
+      console.error('[Side Panel] Error showing fallback screen:', fallbackError);
+    }
   }
-
-  // Load initial data
-  await loadRecentNotes();
-
-  // Update OAuth connection UIs
-  await updateGitHubConnectionUI();
-  await updateNotionConnectionUI();
-
-  // Update destination button states based on auth
-  updateDestinationOptions();
-
-  // Show recording screen
-  showScreen(screens.RECORDING);
-
-  console.log('[Side Panel] Ready');
 }
 
 // ============================================================================
@@ -1602,6 +2045,707 @@ function resetProjectForm() {
   projectItemTitle.value = '';
   projectItemBody.value = '';
   selectedProject = null;
+}
+
+// ============================================================================
+// Testing Dashboard Functions
+// ============================================================================
+
+// State for testing features
+let currentElement = null;
+let currentScreenshot = null;
+let currentAIAnalysis = null;
+let consoleLogs = [];
+let currentLogFilter = 'all';
+
+async function loadTestingDashboard() {
+  console.log('[Testing Dashboard] Loading dashboard...');
+
+  try {
+    // Initialize VisionService with saved settings
+    const settings = await getSettings();
+    const visionSettings = settings.visionSettings || {};
+    
+    if (visionSettings.provider && visionSettings[`${visionSettings.provider}ApiKey`]) {
+      try {
+        if (!visionService) {
+          visionService = new VisionService();
+        }
+        visionService.setProvider(visionSettings.provider, visionSettings[`${visionSettings.provider}ApiKey`]);
+        console.log('[Testing Dashboard] VisionService initialized with provider:', visionSettings.provider);
+      } catch (visionError) {
+        console.error('[Testing Dashboard] Error initializing vision service:', visionError);
+        showToast('Error initializing vision service', 'error');
+      }
+    } else {
+      console.warn('[Testing Dashboard] No vision provider configured');
+    }
+
+    // Get active tab
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (tab) {
+      // Update tab info
+      tabTitle.textContent = tab.title || 'Loading...';
+      tabUrl.textContent = tab.url || '';
+      
+      // Get favicon
+      if (tab.favIconUrl) {
+        tabIconImg.src = tab.favIconUrl;
+      } else {
+        // Use default icon
+        tabIconImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text y="14" font-size="14">🌐</text></svg>';
+      }
+
+      // Inject content script if needed (skip for chrome:// and other restricted pages)
+      if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('chrome-extension://') && !tab.url.startsWith('about:')) {
+        try {
+          await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
+        } catch {
+          // Content script not injected, inject all files in dependency order
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: [
+                'src/content-scripts/namespace.js',
+                'src/content-scripts/element-inspector.js',
+                'src/content-scripts/element-selector.js',
+                'src/content-scripts/console-interceptor.js',
+                'src/content-scripts/main.js'
+              ]
+            });
+          } catch (injectError) {
+            console.warn('[Testing Dashboard] Cannot inject content script into this page:', injectError.message);
+          }
+        }
+
+        // Get console logs
+        await loadConsoleLogs();
+      } else {
+        console.warn('[Testing Dashboard] Cannot inject content scripts into restricted page:', tab.url);
+      }
+    }
+  } catch (error) {
+    console.error('[Testing Dashboard] Error loading dashboard:', error);
+    showToast('Error loading dashboard', 'error');
+  }
+}
+
+async function handleSelectElement() {
+  console.log('[Testing Dashboard] Enabling element selection...');
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab) {
+      showToast('No active tab found', 'error');
+      return;
+    }
+
+    // Check if this is a restricted page
+    if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('about:'))) {
+      showToast('Cannot select elements on this page. Navigate to a website first.', 'warning');
+      return;
+    }
+
+    // Ensure content script is injected before sending message
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'PING' });
+    } catch {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: [
+          'src/content-scripts/namespace.js',
+          'src/content-scripts/element-inspector.js',
+          'src/content-scripts/element-selector.js',
+          'src/content-scripts/console-interceptor.js',
+          'src/content-scripts/main.js'
+        ]
+      });
+    }
+
+    // Send message to enable element selection
+    await chrome.tabs.sendMessage(tab.id, {
+      type: 'START_ELEMENT_SELECTION'
+    });
+
+    showToast('Click on an element to select it', 'info');
+  } catch (error) {
+    console.error('[Testing Dashboard] Error enabling element selection:', error);
+    showToast('Error enabling element selection', 'error');
+  }
+}
+
+async function handleCaptureScreenshot() {
+  console.log('[Testing Dashboard] Capturing screenshot...');
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab) {
+      showToast('No active tab found', 'error');
+      return;
+    }
+
+    // Capture visible tab
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      format: 'png',
+      quality: 100
+    });
+
+    currentScreenshot = dataUrl;
+
+    showToast('Screenshot captured!', 'success');
+
+    // If we have a selected element, show element inspector
+    if (currentElement) {
+      showElementInspector(currentElement, dataUrl);
+    }
+  } catch (error) {
+    console.error('[Testing Dashboard] Error capturing screenshot:', error);
+    if (error.message && error.message.includes('chrome://')) {
+      showToast('Cannot capture screenshots of chrome:// pages. Navigate to a website first.', 'warning');
+    } else {
+      showToast('Error capturing screenshot', 'error');
+    }
+  }
+}
+
+function handleElementSelected(elementData) {
+  console.log('[Testing Dashboard] Element selected:', elementData);
+
+  currentElement = elementData;
+
+  // Show element inspector
+  showElementInspector(elementData);
+}
+
+function showElementInspector(elementData, screenshot = null) {
+  console.log('[Element Inspector] Showing element inspector...');
+
+  // Update element info
+  elementTag.textContent = elementData.tagName || 'N/A';
+  elementId.textContent = elementData.idAttribute || 'N/A';
+  elementClass.textContent = elementData.className || 'N/A';
+  elementSize.textContent = `${Math.round(elementData.position?.width || 0)} × ${Math.round(elementData.position?.height || 0)}`;
+
+  // Update HTML code
+  elementHtmlCode.textContent = elementData.outerHTML || 'N/A';
+
+  // Update computed styles
+  if (elementData.computedStyles) {
+    elementStylesList.innerHTML = Object.entries(elementData.computedStyles)
+      .map(([property, value]) => `
+        <div class="style-row">
+          <span class="style-property">${property}:</span>
+          <span class="style-value">${value}</span>
+        </div>
+      `)
+      .join('');
+  } else {
+    elementStylesList.innerHTML = '<p class="empty-state">No styles available</p>';
+  }
+
+  // Update screenshot
+  if (screenshot) {
+    elementScreenshot.src = screenshot;
+    currentScreenshot = screenshot;
+  } else if (currentScreenshot) {
+    elementScreenshot.src = currentScreenshot;
+  } else {
+    elementScreenshot.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f5f5f5"/><text x="50" y="50" text-anchor="middle" dy=".3em" font-size="12" fill="%23666">No screenshot</text></svg>';
+  }
+
+  // Show inspector screen
+  showScreen(screens.ELEMENT_INSPECTOR);
+}
+
+// ============================================================================
+// Console Logs Functions
+// ============================================================================
+
+async function loadConsoleLogs() {
+  console.log('[Console Logs] Loading console logs...');
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (tab) {
+      // Request logs from content script
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'GET_CONSOLE_LOGS'
+      });
+
+      if (response && response.logs) {
+        consoleLogs = response.logs;
+        updateConsoleLogsUI();
+        updateErrorCount();
+      }
+    }
+  } catch (error) {
+    console.error('[Console Logs] Error loading logs:', error);
+  }
+}
+
+function handleNewConsoleLog(log) {
+  console.log('[Console Logs] New log:', log);
+
+  // Add to logs
+  consoleLogs.push(log);
+
+  // Limit logs
+  if (consoleLogs.length > 1000) {
+    consoleLogs.shift();
+  }
+
+  // Update UI
+  updateConsoleLogsUI();
+  updateErrorCount();
+}
+
+function handleConsoleLogsReceived(logs) {
+  console.log('[Console Logs] Logs received:', logs.length);
+
+  consoleLogs = logs || [];
+  updateConsoleLogsUI();
+  updateErrorCount();
+}
+
+function updateConsoleLogsUI() {
+  // Filter logs
+  const filteredLogs = currentLogFilter === 'all'
+    ? consoleLogs
+    : consoleLogs.filter(log => log.level === currentLogFilter);
+
+  if (filteredLogs.length === 0) {
+    logList.innerHTML = '<p class="empty-state">No logs captured</p>';
+    return;
+  }
+
+  logList.innerHTML = filteredLogs
+    .slice(-100) // Show last 100 logs
+    .reverse()
+    .map(log => `
+      <div class="log-entry ${log.level}">
+        <div class="log-entry-header">
+          <span class="log-level ${log.level}">${log.level}</span>
+          <span class="log-timestamp">${new Date(log.timestamp).toLocaleTimeString()}</span>
+        </div>
+        <div class="log-message">${escapeHtml(log.message)}</div>
+        ${log.stackTrace ? `<div class="log-stack-trace">${escapeHtml(log.stackTrace)}</div>` : ''}
+      </div>
+    `)
+    .join('');
+}
+
+function updateErrorCount() {
+  const errorCount = consoleLogs.filter(log => log.level === 'error').length;
+  errorCountValue.textContent = errorCount;
+
+  // Update recent errors
+  const recentErrorsList = consoleLogs
+    .filter(log => log.level === 'error')
+    .slice(-5)
+    .reverse();
+
+  if (recentErrorsList.length === 0) {
+    recentErrors.innerHTML = '<p class="empty-state">No errors detected</p>';
+  } else {
+    recentErrors.innerHTML = recentErrorsList
+      .map(log => `
+        <div class="log-entry error">
+          <div class="log-entry-header">
+            <span class="log-level error">ERROR</span>
+            <span class="log-timestamp">${new Date(log.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div class="log-message">${escapeHtml(truncateText(log.message, 100))}</div>
+        </div>
+      `)
+      .join('');
+  }
+}
+
+function filterLogs(level) {
+  console.log('[Console Logs] Filtering logs:', level);
+  currentLogFilter = level;
+  updateConsoleLogsUI();
+}
+
+function toggleLogFilters() {
+  const filters = document.querySelector('.console-filters');
+  filters.style.display = filters.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function handleClearLogs() {
+  console.log('[Console Logs] Clearing logs...');
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (tab) {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'CLEAR_CONSOLE_LOGS'
+      });
+
+      consoleLogs = [];
+      updateConsoleLogsUI();
+      updateErrorCount();
+
+      showToast('Console logs cleared', 'success');
+    }
+  } catch (error) {
+    console.error('[Console Logs] Error clearing logs:', error);
+    showToast('Error clearing logs', 'error');
+  }
+}
+
+// ============================================================================
+// AI Analysis Functions
+// ============================================================================
+
+function setupAIAnalysis(type) {
+  console.log('[AI Analysis] Setting up analysis:', type);
+
+  // Set analysis type
+  analysisType.value = type;
+
+  // Set default prompt based on type
+  const prompts = {
+    general: 'Analyze this UI component and provide insights about its design, accessibility, and potential issues.',
+    accessibility: 'Evaluate this UI component for accessibility issues. Check for proper ARIA labels, keyboard navigation, color contrast, and screen reader compatibility.',
+    performance: 'Analyze this UI component for performance issues. Look for inefficient DOM structure, large images, unnecessary reflows, and optimization opportunities.',
+    bug: 'Identify any bugs, visual issues, or functional problems in this UI component.',
+    test: 'Generate comprehensive test cases for this UI component. Include positive tests, negative tests, edge cases, and accessibility tests.'
+  };
+
+  customPrompt.value = prompts[type] || '';
+}
+
+async function handleRunAnalysis() {
+  console.log('[AI Analysis] Running analysis...');
+
+  if (!currentScreenshot) {
+    showToast('Please capture a screenshot first', 'error');
+    return;
+  }
+
+  try {
+    // Show loading state
+    runAnalysisBtn.disabled = true;
+    runAnalysisBtn.textContent = 'Analyzing...';
+    analysisResults.innerHTML = '<p class="empty-state">Analyzing...</p>';
+
+    // Initialize vision service with error boundary
+    try {
+      if (!visionService) {
+        visionService = new VisionService();
+      }
+    } catch (visionError) {
+      console.error('[AI Analysis] Error initializing vision service:', visionError);
+      showToast('Error initializing vision service', 'error');
+      runAnalysisBtn.disabled = false;
+      runAnalysisBtn.textContent = 'Run Analysis';
+      return;
+    }
+
+    // Get provider, model, and prompt
+    const provider = visionProvider.value;
+    const selectedModel = visionModelSelect ? visionModelSelect.value : null;
+    const prompt = customPrompt.value || analysisType.value;
+
+    console.log('[AI Analysis] Running with provider:', provider, 'model:', selectedModel, 'prompt:', prompt);
+
+    // Set the selected model on the provider instance
+    if (selectedModel) {
+      const providerInstance = visionService.getProvider(provider);
+      if (providerInstance) {
+        providerInstance.model = selectedModel;
+      }
+    }
+
+    // Run analysis
+    const result = await visionService.analyzeImage(currentScreenshot, prompt, provider);
+
+    console.log('[AI Analysis] Result:', result);
+
+    // Display result
+    displayAnalysisResult(result);
+
+    // Store result
+    currentAIAnalysis = result;
+
+    showToast('Analysis complete!', 'success');
+
+  } catch (error) {
+    console.error('[AI Analysis] Error running analysis:', error);
+    showToast(`Error: ${error.message}`, 'error');
+    analysisResults.innerHTML = `<p class="empty-state" style="color: var(--color-danger);">Error: ${error.message}</p>`;
+  } finally {
+    runAnalysisBtn.disabled = false;
+    runAnalysisBtn.innerHTML = '<span>🤖</span> Run Analysis';
+  }
+}
+
+function displayAnalysisResult(result) {
+  if (!result) {
+    analysisResults.innerHTML = '<p class="empty-state">No results</p>';
+    return;
+  }
+
+  // Format result based on type
+  let content = '';
+
+  if (typeof result === 'string') {
+    content = `<p>${escapeHtml(result)}</p>`;
+  } else if (result.content) {
+    content = `<p>${escapeHtml(result.content)}</p>`;
+  } else if (result.analysis) {
+    content = `<p>${escapeHtml(result.analysis)}</p>`;
+  } else if (Array.isArray(result)) {
+    content = result.map(item => `
+      <div style="margin-bottom: 16px; padding: 12px; background-color: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">${escapeHtml(item.title || item.name || 'Item')}</h4>
+        <p style="margin: 0; font-size: 13px; line-height: 1.6;">${escapeHtml(item.description || item.content || '')}</p>
+      </div>
+    `).join('');
+  } else {
+    content = `<pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre>`;
+  }
+
+  analysisResults.innerHTML = `<div class="analysis-content">${content}</div>`;
+}
+
+function handleVisionAnalysisResult(result) {
+  console.log('[AI Analysis] Analysis result received:', result);
+  currentAIAnalysis = result;
+  displayAnalysisResult(result);
+}
+
+// ============================================================================
+// Testing GitHub Issue Functions
+// ============================================================================
+
+async function setupTestingGitHubIssue() {
+  console.log('[Testing GitHub Issue] Setting up issue form...');
+
+  try {
+    // Initialize issue builder with error boundary
+    try {
+      if (!issueBuilder) {
+        issueBuilder = new IssueBuilder();
+      }
+    } catch (error) {
+      console.error('[Side Panel] Error initializing issue builder:', error);
+      showToast('Error initializing issue builder', 'error');
+      throw error;
+    }
+
+    // Load repositories
+    const isGitHubAuthenticated = await GitHubOAuth.isAuthenticated();
+
+    if (isGitHubAuthenticated) {
+      showToast('Loading repositories...', 'info');
+      repositories = await GitHubService.fetchRepositories();
+      console.log(`[Testing GitHub Issue] Loaded ${repositories.length} repositories`);
+
+      // Populate repository dropdown
+      testingIssueRepo.innerHTML = '<option value="">Select repository...</option>' +
+        repositories.map(repo => `<option value="${repo.full_name}">${repo.full_name}</option>`).join('');
+    } else {
+      testingIssueRepo.innerHTML = '<option value="">Please sign in to GitHub first</option>';
+      testingIssueRepo.disabled = true;
+    }
+
+    // Pre-fill title with element info
+    if (currentElement) {
+      const elementDesc = `${currentElement.tagName}${currentElement.idAttribute ? '#' + currentElement.idAttribute : ''}${currentElement.className ? '.' + currentElement.className.split(' ').join('.') : ''}`;
+      testingIssueTitle.value = `Issue with ${elementDesc}`;
+    }
+
+    // Update preview
+    updateIssuePreview();
+
+  } catch (error) {
+    console.error('[Testing GitHub Issue] Error setting up form:', error);
+    showToast(`Error: ${error.message}`, 'error');
+  }
+}
+
+function updateIssuePreview() {
+  console.log('[Testing GitHub Issue] Updating preview...');
+
+  const title = testingIssueTitle.value.trim();
+  const body = testingIssueBody.value.trim();
+  const labels = testingIssueLabels.value.trim();
+
+  // Build issue content
+  let content = '';
+
+  if (title) {
+    content += `<h3 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">${escapeHtml(title)}</h3>`;
+  }
+
+  if (body) {
+    content += `<div style="margin-bottom: 16px; line-height: 1.6;">${escapeHtml(body).replace(/\n/g, '<br>')}</div>`;
+  }
+
+  // Add attachments
+  const attachments = [];
+
+  if (attachScreenshot.checked && currentScreenshot) {
+    attachments.push('📸 Screenshot');
+  }
+
+  if (attachElementInfo.checked && currentElement) {
+    attachments.push('🎯 Element Information');
+  }
+
+  if (attachConsoleLogs.checked && consoleLogs.length > 0) {
+    attachments.push('📋 Console Logs');
+  }
+
+  if (attachAIAnalysis.checked && currentAIAnalysis) {
+    attachments.push('🤖 AI Analysis');
+  }
+
+  if (attachments.length > 0) {
+    content += `<div style="padding: 12px; background-color: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
+      <strong>Attachments:</strong><br>
+      ${attachments.map(a => escapeHtml(a)).join('<br>')}
+    </div>`;
+  }
+
+  if (labels) {
+    content += `<div style="margin-bottom: 16px;">
+      <strong>Labels:</strong> ${escapeHtml(labels)}
+    </div>`;
+  }
+
+  if (!content) {
+    content = '<p class="empty-state">Start filling out the form to see a preview</p>';
+  }
+
+  testingIssuePreviewContent.innerHTML = content;
+}
+
+async function handleSubmitTestingIssue() {
+  console.log('[Testing GitHub Issue] Submitting issue...');
+
+  try {
+    // Validate inputs
+    const repoFullName = testingIssueRepo.value;
+    if (!repoFullName) {
+      showToast('Please select a repository', 'error');
+      return;
+    }
+
+    const title = testingIssueTitle.value.trim();
+    if (!title) {
+      showToast('Please enter an issue title', 'error');
+      return;
+    }
+
+    // Disable button and show loading
+    submitTestingIssueBtn.disabled = true;
+    submitTestingIssueBtn.textContent = 'Creating...';
+
+    // Parse repository owner and name
+    const [owner, repo] = repoFullName.split('/');
+
+    // Parse labels
+    const labels = testingIssueLabels.value
+      .split(',')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    // Build issue body
+    let body = testingIssueBody.value.trim() || '';
+
+    // Add attachments
+    if (attachScreenshot.checked && currentScreenshot) {
+      body += '\n\n## Screenshot\n\n';
+      body += '![Screenshot](data:image/png;base64,' + currentScreenshot.split(',')[1] + ')\n\n';
+    }
+
+    if (attachElementInfo.checked && currentElement) {
+      body += '\n\n## Element Information\n\n';
+      body += '- **Tag:** ' + currentElement.tagName + '\n';
+      body += `- **ID:** ${currentElement.idAttribute || 'N/A'}\n`;
+      body += `- **Class:** ${currentElement.className || 'N/A'}\n`;
+      body += `- **Size:** ${Math.round(currentElement.position?.width || 0)} × ${Math.round(currentElement.position?.height || 0)}\n`;
+      body += `- **XPath:** ${currentElement.xpath || 'N/A'}\n\n`;
+    }
+
+    if (attachConsoleLogs.checked && consoleLogs.length > 0) {
+      body += '\n\n## Console Logs\n\n';
+      const errors = consoleLogs.filter(log => log.level === 'error');
+      const warnings = consoleLogs.filter(log => log.level === 'warn');
+      
+      body += '**Errors:** ' + errors.length + '\n';
+      body += '**Warnings:** ' + warnings.length + '\n\n';
+      
+      if (errors.length > 0) {
+        body += '### Recent Errors\n\n';
+        errors.slice(-5).forEach(log => {
+          body += '- ' + log.message + '\n';
+        });
+        body += '\n';
+      }
+    }
+
+    if (attachAIAnalysis.checked && currentAIAnalysis) {
+      body += '\n\n## AI Analysis\n\n';
+      body += "```\n";
+      body += typeof currentAIAnalysis === 'string' ? currentAIAnalysis : JSON.stringify(currentAIAnalysis, null, 2);
+      body += '\n```\n\n';
+    }
+
+    // Create issue data
+    const issueData = {
+      title,
+      body,
+      labels: labels.length > 0 ? labels : undefined
+    };
+
+    console.log('[Testing GitHub Issue] Creating issue:', issueData);
+
+    // Create issue
+    const createdIssue = await GitHubService.createIssue(owner, repo, issueData);
+
+    console.log('[Testing GitHub Issue] Issue created:', createdIssue.html_url);
+
+    // Show success
+    showToast(
+      '✓ Issue #' + createdIssue.number + ' created! <a href="' + createdIssue.html_url + '" target="_blank" style="color: inherit; text-decoration: underline;">View on GitHub →</a>',
+      'success',
+      5000
+    );
+
+    // Go back to dashboard
+    showScreen(screens.TESTING_DASHBOARD);
+
+  } catch (error) {
+    console.error('[Testing GitHub Issue] Error creating issue:', error);
+    showToast('Failed to create issue: ' + error.message, 'error');
+  } finally {
+    submitTestingIssueBtn.disabled = false;
+    submitTestingIssueBtn.innerHTML = '<span>🐙</span> Create Issue';
+  }
+}
+
+function handleGitHubIssueCreated(issue) {
+  console.log('[Testing GitHub Issue] Issue created:', issue);
+  showToast('Issue #' + issue.number + ' created!', 'success');
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ============================================================================

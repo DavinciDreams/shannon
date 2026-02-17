@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Duly Noted</title>
+  <title>Shannon - Front-End Testing Agent</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -15,10 +15,15 @@
 
     <!-- Header -->
     <header class="header">
-      <h1 class="header-title">🎤 Duly Noted</h1>
-      <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">
-        <span>⚙️</span>
-      </button>
+      <h1 class="header-title">🧪 Shannon</h1>
+      <div class="header-actions">
+        <button id="modeSwitcherBtn" class="btn btn-small btn-mode-switcher" title="Switch Mode">
+          <span id="modeSwitcherText">🧪 Testing</span>
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">
+          <span>⚙️</span>
+        </button>
+      </div>
     </header>
 
     <!-- Main Content Area (screens will be toggled) -->
@@ -406,11 +411,332 @@
             </div>
           </div>
 
+          <div class="settings-section">
+            <h3>🤖 AI Vision Provider</h3>
+            <p class="help-text">Configure your AI vision provider for element analysis and test case generation</p>
+            
+            <div class="form-group">
+              <label for="visionProviderSelect">Provider</label>
+              <select id="visionProviderSelect" class="input">
+                <option value="">Select a provider...</option>
+                <option value="zai">Zai (Zhipu AI)</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="claude">Claude (Anthropic)</option>
+              </select>
+            </div>
+
+            <div id="visionModelSection" class="form-group" style="display: none;">
+              <label for="visionModelSelect">Model</label>
+              <select id="visionModelSelect" class="input">
+                <!-- Populated dynamically based on provider -->
+              </select>
+            </div>
+
+            <div id="visionApiKeySection" class="form-group" style="display: none;">
+              <label for="visionApiKey">API Key</label>
+              <input type="password" id="visionApiKey" placeholder="Enter your API key" class="input">
+              <button id="testVisionApiKeyBtn" class="btn btn-small">Test Connection</button>
+            </div>
+
+            <div id="visionProviderHelp" class="provider-help" style="display: none;">
+              <p id="visionProviderHelpText"></p>
+              <a id="visionProviderDocsLink" href="#" target="_blank">View Documentation →</a>
+            </div>
+          </div>
+
           <div class="settings-actions">
             <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
             <button id="resetSettingsBtn" class="btn btn-secondary">Reset to Defaults</button>
           </div>
 
+        </div>
+      </div>
+
+      <!-- Screen: Testing Dashboard -->
+      <div id="testingDashboardScreen" class="screen">
+        <div class="testing-dashboard">
+          <!-- Header -->
+          <div class="dashboard-header">
+            <h2>Testing Dashboard</h2>
+            <button id="refreshDashboardBtn" class="icon-btn" title="Refresh">
+              <span>🔄</span>
+            </button>
+          </div>
+
+          <!-- Active Tab Info -->
+          <div class="active-tab-info">
+            <div class="tab-icon" id="tabIcon">
+              <img src="" alt="" id="tabIconImg" style="width: 32px; height: 32px; border-radius: 4px;">
+            </div>
+            <div class="tab-details">
+              <div class="tab-title" id="tabTitle">Loading...</div>
+              <div class="tab-url" id="tabUrl"></div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="quick-actions">
+            <button id="selectElementBtn" class="btn btn-primary">
+              <span>🎯</span> Select Element
+            </button>
+            <button id="captureScreenshotBtn" class="btn btn-secondary">
+              <span>📸</span> Capture Screenshot
+            </button>
+            <button id="viewConsoleLogsBtn" class="btn btn-secondary">
+              <span>📋</span> Console Logs
+            </button>
+            <button id="voiceNoteBtn" class="btn btn-secondary">
+              <span>🎤</span> Voice Note
+            </button>
+          </div>
+
+          <!-- Console Errors Summary -->
+          <div class="console-summary">
+            <h3>Console Errors</h3>
+            <div class="error-count" id="errorCount">
+              <span class="count" id="errorCountValue">0</span>
+              <span class="label">errors</span>
+            </div>
+            <div class="error-list" id="recentErrors">
+              <p class="empty-state">No errors detected</p>
+            </div>
+          </div>
+
+          <!-- Recent Tests -->
+          <div class="recent-tests">
+            <h3>Recent Tests</h3>
+            <div class="test-list" id="recentTests">
+              <p class="empty-state">No tests yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen: Element Inspector -->
+      <div id="elementInspectorScreen" class="screen">
+        <div class="element-inspector">
+          <!-- Header -->
+          <div class="inspector-header">
+            <button id="backToDashboardBtn" class="btn btn-text">
+              <span>← Back</span>
+            </button>
+            <h2>Element Inspector</h2>
+          </div>
+
+          <!-- Element Preview -->
+          <div class="element-preview">
+            <img id="elementScreenshot" src="" alt="Element screenshot" />
+            <div class="element-info">
+              <div class="info-row">
+                <span class="label">Tag:</span>
+                <span id="elementTag"></span>
+              </div>
+              <div class="info-row">
+                <span class="label">ID:</span>
+                <span id="elementId"></span>
+              </div>
+              <div class="info-row">
+                <span class="label">Class:</span>
+                <span id="elementClass"></span>
+              </div>
+              <div class="info-row">
+                <span class="label">Size:</span>
+                <span id="elementSize"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Element HTML -->
+          <div class="element-html">
+            <h3>HTML</h3>
+            <pre id="elementHtmlCode"></pre>
+          </div>
+
+          <!-- Element Styles -->
+          <div class="element-styles">
+            <h3>Computed Styles</h3>
+            <div id="elementStylesList"></div>
+          </div>
+
+          <!-- Actions -->
+          <div class="inspector-actions">
+            <button id="analyzeWithAIBtn" class="btn btn-primary">
+              <span>🤖</span> Analyze with AI
+            </button>
+            <button id="generateTestCasesBtn" class="btn btn-secondary">
+              <span>📝</span> Generate Test Cases
+            </button>
+            <button id="createIssueFromInspectorBtn" class="btn btn-secondary">
+              <span>🐙</span> Create GitHub Issue
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen: Console Logs -->
+      <div id="consoleLogsScreen" class="screen">
+        <div class="console-logs">
+          <!-- Header -->
+          <div class="console-header">
+            <button id="backToDashboardFromLogsBtn" class="btn btn-text">
+              <span>← Back</span>
+            </button>
+            <h2>Console Logs</h2>
+            <div class="console-actions">
+              <button id="filterLogsBtn" class="icon-btn" title="Filter">
+                <span>🔍</span>
+              </button>
+              <button id="clearLogsBtn" class="icon-btn" title="Clear">
+                <span>🗑️</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters -->
+          <div class="console-filters">
+            <button class="filter-btn active" data-level="all">All</button>
+            <button class="filter-btn" data-level="error">Errors</button>
+            <button class="filter-btn" data-level="warn">Warnings</button>
+            <button class="filter-btn" data-level="info">Info</button>
+            <button class="filter-btn" data-level="log">Logs</button>
+          </div>
+
+          <!-- Log List -->
+          <div class="log-list" id="logList">
+            <p class="empty-state">No logs captured</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen: AI Analysis -->
+      <div id="aiAnalysisScreen" class="screen">
+        <div class="ai-analysis">
+          <!-- Header -->
+          <div class="analysis-header">
+            <button id="backToInspectorBtn" class="btn btn-text">
+              <span>← Back</span>
+            </button>
+            <h2>AI Analysis</h2>
+          </div>
+
+          <!-- Provider Selection -->
+          <div class="provider-selection">
+            <label for="visionProvider">AI Provider:</label>
+            <select id="visionProvider">
+              <option value="zai">Zai (Zhipu)</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="claude">Claude (Anthropic)</option>
+            </select>
+          </div>
+
+          <!-- Model Selection -->
+          <div class="model-selection">
+            <label for="visionModel">Model:</label>
+            <select id="visionModel">
+              <!-- Populated dynamically based on provider -->
+            </select>
+          </div>
+
+          <!-- Analysis Type -->
+          <div class="analysis-type">
+            <label for="analysisType">Analysis Type:</label>
+            <select id="analysisType">
+              <option value="general">General Analysis</option>
+              <option value="accessibility">Accessibility Check</option>
+              <option value="performance">Performance Review</option>
+              <option value="bug">Bug Detection</option>
+              <option value="test">Test Case Generation</option>
+            </select>
+          </div>
+
+          <!-- Custom Prompt -->
+          <div class="custom-prompt">
+            <label for="customPrompt">Custom Prompt:</label>
+            <textarea id="customPrompt" rows="4" placeholder="Enter custom analysis prompt..."></textarea>
+          </div>
+
+          <!-- Analyze Button -->
+          <button id="runAnalysisBtn" class="btn btn-primary">
+            <span>🤖</span> Run Analysis
+          </button>
+
+          <!-- Results -->
+          <div class="analysis-results" id="analysisResults">
+            <p class="empty-state">Run an analysis to see results</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen: Testing GitHub Issue -->
+      <div id="testingGitHubIssueScreen" class="screen">
+        <div class="github-issue">
+          <!-- Header -->
+          <div class="issue-header">
+            <button id="backToInspectorFromIssueBtn" class="btn btn-text">
+              <span>← Back</span>
+            </button>
+            <h2>Create GitHub Issue</h2>
+          </div>
+
+          <!-- Repository Selection -->
+          <div class="repo-selection">
+            <label for="testingIssueRepo">Repository:</label>
+            <select id="testingIssueRepo">
+              <option value="">Select repository...</option>
+            </select>
+          </div>
+
+          <!-- Issue Form -->
+          <div class="issue-form">
+            <div class="form-group">
+              <label for="testingIssueTitle">Title:</label>
+              <input type="text" id="testingIssueTitle" placeholder="Issue title" />
+            </div>
+
+            <div class="form-group">
+              <label for="testingIssueBody">Description:</label>
+              <textarea id="testingIssueBody" rows="8" placeholder="Issue description"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="testingIssueLabels">Labels:</label>
+              <input type="text" id="testingIssueLabels" placeholder="bug, enhancement, etc." />
+            </div>
+
+            <!-- Attachments -->
+            <div class="attachments">
+              <h3>Attachments</h3>
+              <div class="attachment-list" id="attachmentList">
+                <label class="attachment-item">
+                  <input type="checkbox" checked id="attachScreenshot" />
+                  <span>Screenshot</span>
+                </label>
+                <label class="attachment-item">
+                  <input type="checkbox" checked id="attachElementInfo" />
+                  <span>Element Information</span>
+                </label>
+                <label class="attachment-item">
+                  <input type="checkbox" checked id="attachConsoleLogs" />
+                  <span>Console Logs</span>
+                </label>
+                <label class="attachment-item">
+                  <input type="checkbox" id="attachAIAnalysis" />
+                  <span>AI Analysis</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="issue-preview">
+            <h3>Preview</h3>
+            <div id="testingIssuePreviewContent"></div>
+          </div>
+
+          <!-- Submit Button -->
+          <button id="submitTestingIssueBtn" class="btn btn-primary">
+            <span>🐙</span> Create Issue
+          </button>
         </div>
       </div>
 

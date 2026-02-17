@@ -10,6 +10,13 @@ export const STORAGE_KEYS = {
   SETTINGS: 'settings',
   CURRENT_RECORDING: 'current_recording',
   LAST_DESTINATION: 'last_destination',
+  // Front-End Testing Agent Keys
+  TEST_RESULTS: 'test_results',
+  CONSOLE_LOGS: 'console_logs',
+  ELEMENT_DATA: 'element_data',
+  SCREENSHOTS: 'screenshots',
+  AI_ANALYSIS: 'ai_analysis',
+  VISION_SETTINGS: 'vision_settings',
 };
 
 /**
@@ -333,4 +340,374 @@ export async function getStorageQuota() {
 export async function isStorageNearlyFull() {
   const quota = await getStorageQuota();
   return quota.percentUsed > 80;
+}
+
+// ============================================================================
+// Front-End Testing Agent Storage
+// ============================================================================
+
+/**
+ * Get all test results
+ * @returns {Promise<Array>} Array of test result objects
+ */
+export async function getTestResults() {
+  const results = await getLocal(STORAGE_KEYS.TEST_RESULTS);
+  return results || [];
+}
+
+/**
+ * Save a test result
+ * @param {Object} testResult - Test result object
+ * @param {string} testResult.id - UUID
+ * @param {number} testResult.timestamp - Unix timestamp
+ * @param {string} testResult.url - Page URL
+ * @param {string} testResult.status - 'passed' | 'failed' | 'skipped'
+ * @param {Object} [testResult.elementData] - Element information
+ * @param {Array} [testResult.consoleLogs] - Console logs
+ * @param {string} [testResult.screenshot] - Screenshot data URL
+ * @param {Object} [testResult.aiAnalysis] - AI analysis results
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveTestResult(testResult) {
+  const results = await getTestResults();
+  results.unshift(testResult); // Add to beginning (most recent first)
+  
+  // Keep only last 1000 test results to prevent storage bloat
+  const trimmed = results.slice(0, 1000);
+  
+  return await setLocal(STORAGE_KEYS.TEST_RESULTS, trimmed);
+}
+
+/**
+ * Update a test result
+ * @param {string} testId - Test result ID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<boolean>} Success status
+ */
+export async function updateTestResult(testId, updates) {
+  const results = await getTestResults();
+  const index = results.findIndex(r => r.id === testId);
+
+  if (index === -1) {
+    console.error(`[Storage] Test result ${testId} not found`);
+    return false;
+  }
+
+  results[index] = { ...results[index], ...updates };
+  return await setLocal(STORAGE_KEYS.TEST_RESULTS, results);
+}
+
+/**
+ * Delete a test result
+ * @param {string} testId - Test result ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function deleteTestResult(testId) {
+  const results = await getTestResults();
+  const filtered = results.filter(r => r.id !== testId);
+  return await setLocal(STORAGE_KEYS.TEST_RESULTS, filtered);
+}
+
+/**
+ * Clear all test results
+ * @returns {Promise<boolean>} Success status
+ */
+export async function clearTestResults() {
+  return await setLocal(STORAGE_KEYS.TEST_RESULTS, []);
+}
+
+// ============================================================================
+// Console Logs Storage
+// ============================================================================
+
+/**
+ * Get console logs for a specific test or page
+ * @param {string} testId - Optional test ID to filter by
+ * @returns {Promise<Array>} Array of console log objects
+ */
+export async function getConsoleLogs(testId = null) {
+  const logs = await getLocal(STORAGE_KEYS.CONSOLE_LOGS);
+  if (!logs) return [];
+  
+  if (testId) {
+    return logs.filter(log => log.testId === testId);
+  }
+  return logs;
+}
+
+/**
+ * Save console logs
+ * @param {Array} logs - Array of console log objects
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveConsoleLogs(logs) {
+  const existingLogs = await getLocal(STORAGE_KEYS.CONSOLE_LOGS) || [];
+  const allLogs = [...existingLogs, ...logs];
+  
+  // Keep only last 5000 console logs to prevent storage bloat
+  const trimmed = allLogs.slice(-5000);
+  
+  return await setLocal(STORAGE_KEYS.CONSOLE_LOGS, trimmed);
+}
+
+/**
+ * Clear console logs for a specific test or all logs
+ * @param {string} testId - Optional test ID to clear logs for
+ * @returns {Promise<boolean>} Success status
+ */
+export async function clearConsoleLogs(testId = null) {
+  if (testId) {
+    const logs = await getConsoleLogs();
+    const filtered = logs.filter(log => log.testId !== testId);
+    return await setLocal(STORAGE_KEYS.CONSOLE_LOGS, filtered);
+  }
+  return await setLocal(STORAGE_KEYS.CONSOLE_LOGS, []);
+}
+
+// ============================================================================
+// Element Data Storage
+// ============================================================================
+
+/**
+ * Get element data for a specific test
+ * @param {string} testId - Test result ID
+ * @returns {Promise<Object|null>} Element data object or null
+ */
+export async function getElementData(testId) {
+  const allElementData = await getLocal(STORAGE_KEYS.ELEMENT_DATA);
+  if (!allElementData) return null;
+  
+  return allElementData[testId] || null;
+}
+
+/**
+ * Save element data for a test
+ * @param {string} testId - Test result ID
+ * @param {Object} elementData - Element data object
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveElementData(testId, elementData) {
+  const allElementData = await getLocal(STORAGE_KEYS.ELEMENT_DATA) || {};
+  allElementData[testId] = elementData;
+  return await setLocal(STORAGE_KEYS.ELEMENT_DATA, allElementData);
+}
+
+/**
+ * Delete element data for a test
+ * @param {string} testId - Test result ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function deleteElementData(testId) {
+  const allElementData = await getLocal(STORAGE_KEYS.ELEMENT_DATA) || {};
+  delete allElementData[testId];
+  return await setLocal(STORAGE_KEYS.ELEMENT_DATA, allElementData);
+}
+
+// ============================================================================
+// Screenshots Storage
+// ============================================================================
+
+/**
+ * Get screenshot for a specific test
+ * @param {string} testId - Test result ID
+ * @returns {Promise<string|null>} Screenshot data URL or null
+ */
+export async function getScreenshot(testId) {
+  const allScreenshots = await getLocal(STORAGE_KEYS.SCREENSHOTS);
+  if (!allScreenshots) return null;
+  
+  return allScreenshots[testId] || null;
+}
+
+/**
+ * Save screenshot for a test
+ * @param {string} testId - Test result ID
+ * @param {string} dataUrl - Screenshot data URL
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveScreenshot(testId, dataUrl) {
+  const allScreenshots = await getLocal(STORAGE_KEYS.SCREENSHOTS) || {};
+  allScreenshots[testId] = dataUrl;
+  return await setLocal(STORAGE_KEYS.SCREENSHOTS, allScreenshots);
+}
+
+/**
+ * Delete screenshot for a test
+ * @param {string} testId - Test result ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function deleteScreenshot(testId) {
+  const allScreenshots = await getLocal(STORAGE_KEYS.SCREENSHOTS) || {};
+  delete allScreenshots[testId];
+  return await setLocal(STORAGE_KEYS.SCREENSHOTS, allScreenshots);
+}
+
+/**
+ * Clear all screenshots
+ * @returns {Promise<boolean>} Success status
+ */
+export async function clearAllScreenshots() {
+  return await setLocal(STORAGE_KEYS.SCREENSHOTS, {});
+}
+
+// ============================================================================
+// AI Analysis Storage
+// ============================================================================
+
+/**
+ * Get AI analysis for a specific test
+ * @param {string} testId - Test result ID
+ * @returns {Promise<Object|null>} AI analysis object or null
+ */
+export async function getAIAnalysis(testId) {
+  const allAnalysis = await getLocal(STORAGE_KEYS.AI_ANALYSIS);
+  if (!allAnalysis) return null;
+  
+  return allAnalysis[testId] || null;
+}
+
+/**
+ * Save AI analysis for a test
+ * @param {string} testId - Test result ID
+ * @param {Object} analysis - AI analysis object
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveAIAnalysis(testId, analysis) {
+  const allAnalysis = await getLocal(STORAGE_KEYS.AI_ANALYSIS) || {};
+  allAnalysis[testId] = analysis;
+  return await setLocal(STORAGE_KEYS.AI_ANALYSIS, allAnalysis);
+}
+
+/**
+ * Update AI analysis for a test
+ * @param {string} testId - Test result ID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<boolean>} Success status
+ */
+export async function updateAIAnalysis(testId, updates) {
+  const allAnalysis = await getLocal(STORAGE_KEYS.AI_ANALYSIS) || {};
+  const existing = allAnalysis[testId] || {};
+  allAnalysis[testId] = { ...existing, ...updates };
+  return await setLocal(STORAGE_KEYS.AI_ANALYSIS, allAnalysis);
+}
+
+/**
+ * Delete AI analysis for a test
+ * @param {string} testId - Test result ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function deleteAIAnalysis(testId) {
+  const allAnalysis = await getLocal(STORAGE_KEYS.AI_ANALYSIS) || {};
+  delete allAnalysis[testId];
+  return await setLocal(STORAGE_KEYS.AI_ANALYSIS, allAnalysis);
+}
+
+// ============================================================================
+// Vision Settings Storage
+// ============================================================================
+
+/**
+ * Get vision settings
+ * @returns {Promise<Object>} Vision settings object
+ */
+export async function getVisionSettings() {
+  const settings = await getLocal(STORAGE_KEYS.VISION_SETTINGS);
+  return settings || {};
+}
+
+/**
+ * Update vision settings
+ * @param {Object} updates - Settings to update
+ * @returns {Promise<boolean>} Success status
+ */
+export async function updateVisionSettings(updates) {
+  const current = await getVisionSettings();
+  const updated = { ...current, ...updates };
+  return await setLocal(STORAGE_KEYS.VISION_SETTINGS, updated);
+}
+
+/**
+ * Reset vision settings to defaults
+ * @returns {Promise<boolean>} Success status
+ */
+export async function resetVisionSettings() {
+  return await setLocal(STORAGE_KEYS.VISION_SETTINGS, {});
+}
+
+/**
+ * Get vision provider settings
+ * @param {string} provider - Provider key ('zai', 'openrouter', 'claude')
+ * @returns {Promise<Object|null>} Provider settings or null
+ */
+export async function getVisionProviderSettings(provider) {
+  const settings = await getVisionSettings();
+  return settings[provider] || null;
+}
+
+/**
+ * Update vision provider settings
+ * @param {string} provider - Provider key
+ * @param {Object} providerSettings - Provider settings to update
+ * @returns {Promise<boolean>} Success status
+ */
+export async function updateVisionProviderSettings(provider, providerSettings) {
+  const settings = await getVisionSettings();
+  settings[provider] = { ...settings[provider], ...providerSettings };
+  return await setLocal(STORAGE_KEYS.VISION_SETTINGS, settings);
+}
+
+// ============================================================================
+// Test Result Cleanup
+// ============================================================================
+
+/**
+ * Delete all data associated with a test result
+ * @param {string} testId - Test result ID
+ * @returns {Promise<boolean>} Success status
+ */
+export async function deleteTestResultData(testId) {
+  try {
+    await Promise.all([
+      deleteTestResult(testId),
+      deleteElementData(testId),
+      deleteScreenshot(testId),
+      deleteAIAnalysis(testId),
+    ]);
+    return true;
+  } catch (error) {
+    console.error(`[Storage] Error deleting test result data for ${testId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Get complete test result with all associated data
+ * @param {string} testId - Test result ID
+ * @returns {Promise<Object|null>} Complete test result object or null
+ */
+export async function getCompleteTestResult(testId) {
+  try {
+    const results = await getTestResults();
+    const testResult = results.find(r => r.id === testId);
+    
+    if (!testResult) {
+      return null;
+    }
+
+    const [elementData, screenshot, aiAnalysis] = await Promise.all([
+      getElementData(testId),
+      getScreenshot(testId),
+      getAIAnalysis(testId),
+    ]);
+
+    return {
+      ...testResult,
+      elementData,
+      screenshot,
+      aiAnalysis,
+    };
+  } catch (error) {
+    console.error(`[Storage] Error getting complete test result ${testId}:`, error);
+    return null;
+  }
 }

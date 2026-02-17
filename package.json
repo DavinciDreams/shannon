@@ -1,17 +1,29 @@
 {
-  "name": "voice-starter",
+  "name": "shannon",
   "version": "1.0.0",
-  "description": "Quick voice notes with AI transcription. Send to GitHub Issues, Projects, OneNote, or save as drafts.",
+  "description": "Intelligent UI testing agent with AI-powered visual analysis, console monitoring, element inspection, and seamless GitHub issue reporting.",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "build:config": "node scripts/build-config.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "chrome-extension",
+    "testing",
+    "ui-testing",
+    "ai",
+    "vision",
+    "github",
+    "console",
+    "screenshot",
+    "element-inspector",
+    "bug-reporting"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "atlas-agents": "^0.1.0"
+    "atlas-agents": "^0.1.0",
+    "html2canvas": "^1.4.1"
   }
 }

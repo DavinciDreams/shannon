@@ -58,6 +58,15 @@ function generateConfig() {
     notion: {
       clientId: env.NOTION_CLIENT_ID || '',
       clientSecret: env.NOTION_CLIENT_SECRET || ''
+    },
+    zai: {
+      apiKey: env.ZAI_API_KEY || 'your_zai_api_key_here'
+    },
+    openrouter: {
+      apiKey: env.OPENROUTER_API_KEY || 'your_openrouter_api_key_here'
+    },
+    claude: {
+      apiKey: env.ANTHROPIC_API_KEY || 'your_anthropic_api_key_here'
     }
   };
 
@@ -66,11 +75,26 @@ function generateConfig() {
                           config.github.clientSecret !== 'YOUR_GITHUB_CLIENT_SECRET';
 
   if (!hasGitHubConfig) {
-    console.error('❌ GitHub OAuth credentials not configured!');
-    console.error('   1. Copy .env.example to .env');
-    console.error('   2. Add your GitHub Client ID and Secret');
-    console.error('   3. Run this script again');
-    process.exit(1);
+    console.warn('⚠️  GitHub OAuth credentials not configured!');
+    console.warn('   GitHub issue creation will not be available.');
+    console.warn('   To enable: Copy .env.example to .env and add your GitHub credentials.');
+  }
+
+  // Check vision providers
+  const hasZai = config.zai.apiKey !== 'your_zai_api_key_here';
+  const hasOpenRouter = config.openrouter.apiKey !== 'your_openrouter_api_key_here';
+  const hasClaude = config.claude.apiKey !== 'your_anthropic_api_key_here';
+
+  if (!hasZai && !hasOpenRouter && !hasClaude) {
+    console.warn('⚠️  No vision provider API keys configured!');
+    console.warn('   Vision analysis features will not be available.');
+    console.warn('   To enable: Add at least one of ZAI_API_KEY, OPENROUTER_API_KEY, or ANTHROPIC_API_KEY to .env');
+  } else {
+    const providers = [];
+    if (hasZai) providers.push('Zai (Zhipu AI)');
+    if (hasOpenRouter) providers.push('OpenRouter');
+    if (hasClaude) providers.push('Claude Code (Anthropic)');
+    console.log(`✅ Vision providers configured: ${providers.join(', ')}`);
   }
 
   return config;
