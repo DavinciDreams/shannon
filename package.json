@@ -23,7 +23,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "atlas-agents": "^0.1.0",
-    "html2canvas": "^1.4.1"
+    "atlas-agents": "^0.1.0"
   }
 }

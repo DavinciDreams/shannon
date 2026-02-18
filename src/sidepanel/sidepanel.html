@@ -474,9 +474,18 @@
             </div>
           </div>
 
+          <!-- AI Status Indicator -->
+          <div id="aiStatusBar" class="ai-status-bar">
+            <span id="aiStatusDot" class="ai-status-dot ai-status-checking"></span>
+            <span id="aiStatusText" class="ai-status-text">Checking AI...</span>
+          </div>
+
           <!-- Quick Actions -->
           <div class="quick-actions">
-            <button id="selectElementBtn" class="btn btn-primary">
+            <button id="quickAnalyzeBtn" class="btn btn-primary">
+              <span>🧠</span> Quick Analyze
+            </button>
+            <button id="selectElementBtn" class="btn btn-secondary">
               <span>🎯</span> Select Element
             </button>
             <button id="captureScreenshotBtn" class="btn btn-secondary">
@@ -488,6 +497,25 @@
             <button id="voiceNoteBtn" class="btn btn-secondary">
               <span>🎤</span> Voice Note
             </button>
+          </div>
+
+          <!-- Quick Analysis Results -->
+          <div id="analysisResultsPanel" class="analysis-results-panel" style="display: none;">
+            <div class="analysis-results-header">
+              <h3>Analysis Results</h3>
+              <div class="analysis-meta">
+                <span id="analysisDifficultyBadge" class="difficulty-badge"></span>
+                <span id="analysisProviderBadge" class="provider-badge"></span>
+              </div>
+            </div>
+            <div id="analysisProgress" class="analysis-progress" style="display: none;">
+              <div class="progress-bar">
+                <div id="analysisProgressBar" class="progress-bar-fill" style="width: 0%"></div>
+              </div>
+              <span id="analysisProgressText" class="progress-text">Starting...</span>
+            </div>
+            <div id="analysisSummary" class="analysis-summary"></div>
+            <div id="analysisDetails" class="analysis-details"></div>
           </div>
 
           <!-- Console Errors Summary -->

@@ -172,3 +172,68 @@ manifest.json (MV3)
 - `manifest.json` - `host_permissions`: `https://open.bigmodel.cn/*` → `https://api.z.ai/*`
 
 **Status:** Zai now targets production api.z.ai endpoint. OpenRouter offers 6 current vision models across Anthropic, OpenAI, Google, Qwen, and Mistral.
+
+### 2026-02-17 - Phase 1: Gemini Nano Integration + Difficulty Estimator
+
+**Context:** Implementing the LLM-powered UI testing automation plan (v2). Phase 1 adds on-device AI analysis via Gemini Nano and heuristic bug difficulty scoring with cost-effective model routing.
+
+**Plan:** `plans/llm-ui-testing-automation-plan-v2.md` — comprehensive 5-phase plan covering Nano integration, dynamic observation via TabCapture, bug difficulty estimation, multi-page analysis, and SPA monitoring.
+
+**Files Created:**
+- `src/lib/nano-provider.js` — Gemini Nano Prompt API wrapper with dual API shape support:
+  - Shape 1: `self.ai.languageModel` (Chrome 127-137 origin trial)
+  - Shape 2: `LanguageModel` global (Chrome 138+ stable)
+  - Multimodal prompting: text + ImageBitmap (converts base64 dataUrl → ImageBitmap via fetch/blob/createImageBitmap)
+  - Session lifecycle: creates on first use, auto-destroys after 5 min idle
+  - Static `parseJSON()` helper strips markdown fences from Nano responses
+  - Ported from working `generateAISummary()` in Duly Noted (voice starter)
+- `src/lib/difficulty-estimator.js` — Heuristic bug scoring + model routing:
+  - Scores: error volume, multi-file spread, stack depth, error categories (CORS, memory, network, null/undefined, timeout, security), warning count, visual signals (flicker, freeze, layout shifts)
+  - Maps score → difficulty bands: trivial (0-3), easy (4-10), medium (11-20), hard (21-35), complex (36+)
+  - Routes to model: nano (trivial/easy), cloud-fast (medium), cloud-deep (hard/complex)
+  - Returns color for badge UI
+
+**Files Modified:**
+- `manifest.json` — `minimum_chrome_version`: `"114"` → `"127"` (Nano origin trial minimum)
+- `src/sidepanel/sidepanel.html` — Added:
+  - AI status bar (dot + text) between tab info and quick actions
+  - Quick Analyze button (primary action) to quick actions
+  - Analysis results panel with difficulty badge, provider badge, progress bar, summary, details
+- `src/sidepanel/sidepanel.css` — Added styles for:
+  - `.ai-status-bar` with animated dot states (available/downloading/unavailable/checking)
+  - `.difficulty-badge` with dynamic color
+  - `.analysis-results-panel` with progress bar, error items, issue items, tags
+- `src/sidepanel/sidepanel.js` — Added:
+  - Imports for NanoProvider and DifficultyEstimator
+  - Instances: `nanoProvider`, `difficultyEstimator`
+  - 11 new DOM element references for AI UI
+  - `checkAndDisplayAIStatus()` — checks Nano availability, updates status bar
+  - `handleQuickAnalyze()` — captures screenshot + logs → estimates difficulty → runs Nano analysis → falls back to cloud
+  - `runNanoQuickAnalysis()` — builds compact prompt from logs/screenshot, calls Nano multimodal
+  - `runCloudQuickAnalysis()` — falls back to existing ANALYZE_IMAGE message handler
+  - `displayAnalysisResults()` — renders errors, visual issues, tags, difficulty signals
+  - `updateAnalysisProgress()` — animates progress bar
+  - Event listener: `quickAnalyzeBtn → handleQuickAnalyze`
+  - `checkAndDisplayAIStatus()` called from `init()` (non-blocking)
+
+**Verification:**
+- `nano-provider.js`: ES module imports OK, class instantiates, `parseJSON()` handles fenced/clean/bad JSON
+- `difficulty-estimator.js`: ES module imports OK, scoring tested:
+  - 1 error with "undefined" → score 3 → trivial → nano
+  - 3 errors (CORS + network + null/undefined) across 3 files with deep stack → score 34 → hard → cloud-deep
+- `manifest.json`: Valid JSON, `minimum_chrome_version` is `"127"`
+- No TypeScript/build step (plain JS extension, loaded unpacked)
+
+**What's Working:**
+- Nano availability check runs on side panel init
+- Quick Analyze button captures screenshot + console logs
+- Difficulty estimation produces accurate scoring with correct model routing
+- Analysis results display in side panel with badges, progress, error details
+- Cloud fallback when Nano unavailable
+
+**What's Next (Phase 2):**
+- Create `src/lib/console-analyzer.js` — structured console log analysis via Nano
+- Create `src/lib/visual-analyzer.js` — screenshot UI analysis via Nano
+- Create `src/lib/analysis-orchestrator.js` — coordinates analyzers, caching, difficulty-based routing
+- Integrate Nano-refined difficulty estimation (optional second pass)
+- Add analysis progress indicators during multi-step analysis

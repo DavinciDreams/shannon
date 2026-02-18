@@ -14,6 +14,8 @@ import { NotionService } from '../lib/notion-service.js';
 import { VisionService } from '../lib/vision-service.js';
 import { VISION_PROVIDERS, getProviderModels } from '../config/vision-config.js';
 import { IssueBuilder } from '../lib/issue-builder.js';
+import NanoProvider from '../lib/nano-provider.js';
+import DifficultyEstimator from '../lib/difficulty-estimator.js';
 
 console.log('[Side Panel] Loading...');
 
@@ -21,6 +23,10 @@ console.log('[Side Panel] Loading...');
 let transcriptionService = null;
 let visionService = null;
 let issueBuilder = null;
+
+// AI Analysis services
+const nanoProvider = new NanoProvider();
+const difficultyEstimator = new DifficultyEstimator();
 
 // ============================================================================
 // Screen Management
@@ -204,6 +210,19 @@ const errorCountValue = document.getElementById('errorCountValue');
 const recentErrors = document.getElementById('recentErrors');
 const recentTests = document.getElementById('recentTests');
 
+// AI Status & Quick Analyze elements
+const aiStatusDot = document.getElementById('aiStatusDot');
+const aiStatusText = document.getElementById('aiStatusText');
+const quickAnalyzeBtn = document.getElementById('quickAnalyzeBtn');
+const analysisResultsPanel = document.getElementById('analysisResultsPanel');
+const analysisDifficultyBadge = document.getElementById('analysisDifficultyBadge');
+const analysisProviderBadge = document.getElementById('analysisProviderBadge');
+const analysisProgress = document.getElementById('analysisProgress');
+const analysisProgressBar = document.getElementById('analysisProgressBar');
+const analysisProgressText = document.getElementById('analysisProgressText');
+const analysisSummary = document.getElementById('analysisSummary');
+const analysisDetails = document.getElementById('analysisDetails');
+
 // Element Inspector elements
 const backToDashboardBtn = document.getElementById('backToDashboardBtn');
 const elementScreenshot = document.getElementById('elementScreenshot');
@@ -348,6 +367,7 @@ historyDetailModal.addEventListener('click', (e) => {
 
 // Dashboard
 refreshDashboardBtn.addEventListener('click', loadTestingDashboard);
+quickAnalyzeBtn.addEventListener('click', handleQuickAnalyze);
 selectElementBtn.addEventListener('click', handleSelectElement);
 captureScreenshotBtn.addEventListener('click', handleCaptureScreenshot);
 viewConsoleLogsBtn.addEventListener('click', () => {
@@ -1566,6 +1586,11 @@ async function init() {
     // Update destination button states based on auth
     updateDestinationOptions();
 
+    // Check Gemini Nano availability (non-blocking)
+    checkAndDisplayAIStatus().catch(err => {
+      console.warn('[Side Panel] AI status check failed (non-fatal):', err.message);
+    });
+
     // Show testing dashboard screen and load its data
     showScreen(screens.TESTING_DASHBOARD);
     try {
@@ -2057,6 +2082,341 @@ let currentScreenshot = null;
 let currentAIAnalysis = null;
 let consoleLogs = [];
 let currentLogFilter = 'all';
+let lastAnalysisResult = null;
+
+// ============================================================================
+// AI Status & Quick Analyze Functions
+// ============================================================================
+
+/**
+ * Check Gemini Nano availability and update the status bar.
+ */
+async function checkAndDisplayAIStatus() {
+  try {
+    const { available, status } = await nanoProvider.checkAvailability();
+
+    // Update dot class
+    aiStatusDot.className = 'ai-status-dot';
+    if (status === 'available') {
+      aiStatusDot.classList.add('ai-status-available');
+      aiStatusText.textContent = 'Gemini Nano ready';
+    } else if (status === 'downloading') {
+      aiStatusDot.classList.add('ai-status-downloading');
+      aiStatusText.textContent = 'Downloading AI model...';
+    } else {
+      aiStatusDot.classList.add('ai-status-unavailable');
+      aiStatusText.textContent = 'On-device AI unavailable (cloud fallback)';
+    }
+
+    console.log(`[AI Status] Nano available: ${available}, status: ${status}, shape: ${nanoProvider.apiShape}`);
+  } catch (err) {
+    console.warn('[AI Status] Check failed:', err);
+    aiStatusDot.className = 'ai-status-dot ai-status-unavailable';
+    aiStatusText.textContent = 'AI status unknown';
+  }
+}
+
+/**
+ * Update the analysis progress UI.
+ */
+function updateAnalysisProgress(percent, message) {
+  analysisProgress.style.display = 'block';
+  analysisProgressBar.style.width = `${percent}%`;
+  analysisProgressText.textContent = message;
+}
+
+/**
+ * Handle the Quick Analyze button click.
+ * Captures screenshot + console logs → estimates difficulty → analyzes with Nano.
+ */
+async function handleQuickAnalyze() {
+  console.log('[Quick Analyze] Starting...');
+
+  // Disable button during analysis
+  quickAnalyzeBtn.disabled = true;
+  quickAnalyzeBtn.innerHTML = '<span>🧠</span> Analyzing...';
+
+  // Show results panel with progress
+  analysisResultsPanel.style.display = 'block';
+  analysisDifficultyBadge.textContent = '';
+  analysisProviderBadge.textContent = '';
+  analysisSummary.innerHTML = '';
+  analysisDetails.innerHTML = '';
+  updateAnalysisProgress(5, 'Gathering data...');
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      throw new Error('No active tab found');
+    }
+
+    // Step 1: Capture screenshot
+    updateAnalysisProgress(10, 'Capturing screenshot...');
+    let screenshotDataUrl = null;
+    try {
+      screenshotDataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    } catch (ssErr) {
+      console.warn('[Quick Analyze] Screenshot capture failed:', ssErr.message);
+    }
+
+    // Step 2: Get console logs
+    updateAnalysisProgress(20, 'Reading console logs...');
+    let tabLogs = [];
+    try {
+      const logsResponse = await chrome.tabs.sendMessage(tab.id, { type: 'GET_CONSOLE_LOGS' });
+      tabLogs = logsResponse?.logs || [];
+    } catch {
+      // Content script may not be injected on restricted pages
+      console.warn('[Quick Analyze] Could not get console logs');
+    }
+
+    // Step 3: Estimate difficulty (instant, no LLM)
+    updateAnalysisProgress(30, 'Estimating bug complexity...');
+    const difficulty = difficultyEstimator.estimateFromSignals(tabLogs, currentElement);
+
+    // Display difficulty badge
+    analysisDifficultyBadge.textContent = `${difficulty.level} · ${difficulty.estimate}`;
+    analysisDifficultyBadge.style.backgroundColor = difficulty.color;
+
+    console.log(`[Quick Analyze] Difficulty: ${difficulty.level} (score: ${difficulty.score}), model: ${difficulty.model}`);
+
+    // Step 4: Run analysis with Nano (or fall back)
+    updateAnalysisProgress(40, `Analyzing with ${difficulty.model}...`);
+
+    const nanoAvailable = nanoProvider.available;
+
+    if (nanoAvailable && (difficulty.model === 'nano' || difficulty.model === 'cloud-fast')) {
+      // Use Nano for analysis
+      analysisProviderBadge.textContent = 'gemini-nano';
+
+      try {
+        updateAnalysisProgress(50, 'AI analyzing console + screenshot...');
+        const result = await runNanoQuickAnalysis(tab, tabLogs, screenshotDataUrl);
+        lastAnalysisResult = result;
+        displayAnalysisResults(result, difficulty);
+        updateAnalysisProgress(100, 'Analysis complete');
+      } catch (nanoErr) {
+        console.warn('[Quick Analyze] Nano failed, attempting cloud fallback:', nanoErr.message);
+        nanoProvider.destroySession(); // Reset session on error
+        updateAnalysisProgress(60, 'On-device failed, trying cloud...');
+        await runCloudQuickAnalysis(tab, tabLogs, screenshotDataUrl, difficulty);
+      }
+    } else if (nanoAvailable && difficulty.model === 'cloud-deep') {
+      // Complex issue — try Nano first anyway (it's free), escalate if needed
+      analysisProviderBadge.textContent = 'gemini-nano';
+      try {
+        updateAnalysisProgress(50, 'Quick analysis with on-device AI...');
+        const result = await runNanoQuickAnalysis(tab, tabLogs, screenshotDataUrl);
+        lastAnalysisResult = result;
+        displayAnalysisResults(result, difficulty);
+        updateAnalysisProgress(100, 'Analysis complete (cloud recommended for deeper insight)');
+      } catch {
+        await runCloudQuickAnalysis(tab, tabLogs, screenshotDataUrl, difficulty);
+      }
+    } else {
+      // Nano unavailable — fall back to cloud
+      await runCloudQuickAnalysis(tab, tabLogs, screenshotDataUrl, difficulty);
+    }
+
+  } catch (err) {
+    console.error('[Quick Analyze] Error:', err);
+    analysisSummary.innerHTML = `<p style="color: var(--color-danger);">Analysis failed: ${escapeHtml(err.message)}</p>`;
+    updateAnalysisProgress(100, 'Failed');
+  } finally {
+    quickAnalyzeBtn.disabled = false;
+    quickAnalyzeBtn.innerHTML = '<span>🧠</span> Quick Analyze';
+    // Hide progress bar after a short delay
+    setTimeout(() => {
+      analysisProgress.style.display = 'none';
+    }, 2000);
+  }
+}
+
+/**
+ * Run analysis using Gemini Nano on-device.
+ */
+async function runNanoQuickAnalysis(tab, tabLogs, screenshotDataUrl) {
+  // Build compact log text
+  const errors = tabLogs.filter(l => l.level === 'error');
+  const warnings = tabLogs.filter(l => l.level === 'warn');
+
+  let logsText = '';
+  if (errors.length > 0) {
+    logsText += `ERRORS (${errors.length}):\n`;
+    const seen = new Set();
+    errors.forEach((e, i) => {
+      const key = (e.message || '').slice(0, 100);
+      if (seen.has(key) || i >= 5) return;
+      seen.add(key);
+      logsText += `${i + 1}. ${(e.message || '').slice(0, 200)}\n`;
+      if (e.source?.file) logsText += `   at ${e.source.file}:${e.source.line || '?'}\n`;
+    });
+  }
+  if (warnings.length > 0) {
+    logsText += `\nWARNINGS (${warnings.length}):\n`;
+    warnings.slice(0, 3).forEach((w, i) => {
+      logsText += `${i + 1}. ${(w.message || '').slice(0, 150)}\n`;
+    });
+  }
+  if (!logsText) {
+    logsText = 'No errors or warnings in console.\n';
+  }
+
+  const prompt = `You are a front-end debugging assistant. Analyze the console logs and screenshot from ${tab.url} and respond with ONLY valid JSON (no markdown, no backticks).
+
+${logsText}
+
+Respond:
+{
+  "summary": "1-2 sentence plain English overview of what is wrong (or 'No issues detected')",
+  "errors": [
+    {
+      "message": "the error",
+      "file": "filename.js",
+      "line": 42,
+      "severity": "critical|high|medium|low",
+      "cause": "likely root cause",
+      "fix": "suggested fix"
+    }
+  ],
+  "visualIssues": [
+    {
+      "type": "visual|accessibility|usability",
+      "title": "short title",
+      "suggestion": "how to fix"
+    }
+  ],
+  "tags": ["bug", "error"],
+  "priority": "critical|high|medium|low"
+}
+
+For tags choose 1-3 from: bug, enhancement, UI, performance, error, accessibility, styling, API, security, network.
+If no errors, set summary to "No issues detected" and errors to empty array.`;
+
+  const raw = await nanoProvider.prompt(prompt, screenshotDataUrl);
+  const parsed = NanoProvider.parseJSON(raw);
+
+  if (parsed) {
+    return { status: 'done', provider: 'gemini-nano', ...parsed };
+  }
+  // Couldn't parse JSON — return raw text
+  return { status: 'partial', provider: 'gemini-nano', summary: raw, errors: [], visualIssues: [], tags: [], priority: 'unknown' };
+}
+
+/**
+ * Fall back to cloud analysis via existing VisionService/ANALYZE_IMAGE.
+ */
+async function runCloudQuickAnalysis(tab, tabLogs, screenshotDataUrl, difficulty) {
+  analysisProviderBadge.textContent = 'cloud';
+  updateAnalysisProgress(70, 'Analyzing with cloud AI...');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'ANALYZE_IMAGE',
+      screenshotData: screenshotDataUrl,
+      options: {
+        consoleLogs: tabLogs.slice(0, 10),
+        pageUrl: tab.url,
+        pageTitle: tab.title
+      }
+    });
+
+    const result = {
+      status: 'done',
+      provider: response?.provider || 'cloud',
+      summary: response?.analysis || 'Cloud analysis complete.',
+      errors: [],
+      visualIssues: [],
+      tags: [],
+      priority: 'medium'
+    };
+
+    lastAnalysisResult = result;
+    displayAnalysisResults(result, difficulty);
+    updateAnalysisProgress(100, 'Complete (cloud)');
+  } catch (cloudErr) {
+    console.error('[Quick Analyze] Cloud fallback failed:', cloudErr);
+    const result = {
+      status: 'fallback',
+      provider: 'none',
+      summary: 'Analysis unavailable. Console logs and screenshot captured for manual review.',
+      errors: [],
+      visualIssues: [],
+      tags: [],
+      priority: 'unknown'
+    };
+    lastAnalysisResult = result;
+    displayAnalysisResults(result, difficulty);
+    updateAnalysisProgress(100, 'Cloud unavailable');
+  }
+}
+
+/**
+ * Display analysis results in the results panel.
+ */
+function displayAnalysisResults(result, difficulty) {
+  // Summary
+  analysisSummary.innerHTML = `<p>${escapeHtml(result.summary || 'Analysis complete.')}</p>`;
+
+  // Build details
+  let detailsHtml = '';
+
+  // Error details
+  if (result.errors && result.errors.length > 0) {
+    detailsHtml += '<div style="margin-bottom: 8px; font-weight: 600; font-size: 13px;">Errors Found:</div>';
+    result.errors.forEach(err => {
+      detailsHtml += `<div class="analysis-error-item">`;
+      detailsHtml += `<div class="error-title">${escapeHtml(err.message || '')}</div>`;
+      if (err.file) {
+        detailsHtml += `<div class="error-location">${escapeHtml(err.file)}${err.line ? ':' + err.line : ''}</div>`;
+      }
+      if (err.cause) {
+        detailsHtml += `<div class="error-location">Cause: ${escapeHtml(err.cause)}</div>`;
+      }
+      if (err.fix) {
+        detailsHtml += `<div class="error-fix">Fix: ${escapeHtml(err.fix)}</div>`;
+      }
+      detailsHtml += `</div>`;
+    });
+  }
+
+  // Visual issues
+  if (result.visualIssues && result.visualIssues.length > 0) {
+    detailsHtml += '<div style="margin-bottom: 8px; font-weight: 600; font-size: 13px;">Visual Issues:</div>';
+    result.visualIssues.forEach(issue => {
+      detailsHtml += `<div class="analysis-issue-item">`;
+      detailsHtml += `<div style="font-weight: 600;">${escapeHtml(issue.title || issue.type || '')}</div>`;
+      if (issue.suggestion) {
+        detailsHtml += `<div>${escapeHtml(issue.suggestion)}</div>`;
+      }
+      detailsHtml += `</div>`;
+    });
+  }
+
+  // Tags
+  if (result.tags && result.tags.length > 0) {
+    detailsHtml += '<div class="analysis-tag-list">';
+    result.tags.forEach(tag => {
+      detailsHtml += `<span class="analysis-tag">${escapeHtml(tag)}</span>`;
+    });
+    detailsHtml += '</div>';
+  }
+
+  // Difficulty signals
+  if (difficulty && difficulty.signals.length > 0) {
+    detailsHtml += '<div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary);">';
+    detailsHtml += `<strong>Signals:</strong> `;
+    detailsHtml += `<ul class="signal-list">`;
+    difficulty.signals.forEach(s => {
+      detailsHtml += `<li class="signal-tag">${escapeHtml(s)}</li>`;
+    });
+    detailsHtml += '</ul>';
+    detailsHtml += `<div style="margin-top: 4px;">Model recommendation: ${escapeHtml(difficulty.modelReason)}</div>`;
+    detailsHtml += '</div>';
+  }
+
+  analysisDetails.innerHTML = detailsHtml;
+}
 
 async function loadTestingDashboard() {
   console.log('[Testing Dashboard] Loading dashboard...');

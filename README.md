@@ -400,8 +400,8 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 **Solutions:**
 - Check activeTab permission is granted
 - Ensure you're not on a restricted page (chrome://, etc.)
-- Verify html2canvas library is loaded
 - Try capturing a different element
+- Refresh the page and try again
 
 ### GitHub Issues Not Creating
 
@@ -450,7 +450,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Built on the foundation of the "Duly Noted" extension
-- Uses [html2canvas](https://html2canvas.hertzen.com/) for screenshot capture
+- Uses Chrome's `captureVisibleTab()` API and OffscreenCanvas for screenshot capture
 - Integrates with multiple AI vision providers
 - Powered by Chrome Extension Manifest V3
 
